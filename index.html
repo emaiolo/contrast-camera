@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Contrast Camera</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,Arial,sans-serif}*{box-sizing:border-box}body{margin:0;background:#111;color:#fff}header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:2px solid white}h1{font-size:1.25rem;margin:0}button,select,input{font:inherit}button{background:#fff;color:#000;border:2px solid #fff;padding:12px 16px;border-radius:7px;font-weight:750;min-height:48px}button:disabled{opacity:.45}button.secondary{background:#000;color:#fff}.actions{display:flex;flex-wrap:wrap;gap:8px}.viewer{position:relative;background:#000;min-height:220px;display:grid;place-items:center}canvas{display:block;width:100%;max-height:65vh;object-fit:contain;background:#000}#source{display:none}.notice{position:absolute;left:10px;right:10px;top:10px;background:#000c;padding:10px;border:1px solid #fff;font-size:1rem}.controls{padding:14px;max-width:900px;margin:auto;display:grid;gap:14px}.setting{display:grid;gap:6px}.setting label{display:flex;justify-content:space-between;align-items:center;font-size:1.07rem;font-weight:bold}input[type=range]{width:100%;height:36px;accent-color:#fff}.checks{display:flex;flex-wrap:wrap;gap:16px}.checks label{font-weight:bold;font-size:1.05rem;display:flex;align-items:center;gap:8px}.checks input{width:22px;height:22px;accent-color:white}.note{color:#ddd;font-size:.88rem;line-height:1.45}footer{padding:0 14px 18px;text-align:center;color:#bbb;font-size:.85rem}button:focus-visible,input:focus-visible{outline:3px solid yellow;outline-offset:3px}
+</style></head>
+<body>
+<header><h1>CONTRAST CAMERA</h1><span id="fps" aria-live="off">— fps</span></header>
+<div class="viewer"><video id="source" playsinline muted autoplay></video><canvas id="view" aria-label="Enhanced live camera view"></canvas><div class="notice" id="notice">Press START CAMERA and allow camera access.</div></div>
+<main class="controls">
+<div class="actions"><button id="start">START CAMERA</button><button class="secondary" id="flip" disabled>SWITCH CAMERA</button><button class="secondary" id="freeze" disabled>FREEZE</button><button class="secondary" id="fullscreen">FULL SCREEN</button></div>
+<div class="setting"><label for="mode">DISPLAY MODE</label><select id="mode" style="min-height:48px;padding:8px;background:#000;color:#fff;border:2px solid white"><option value="threshold">Pure black &amp; white</option><option value="edge">Black &amp; white + outlines</option><option value="outline">Outlines only</option><option value="gray">Enhanced grayscale (comparison)</option></select></div>
+<div class="setting"><label for="threshold">BLACK / WHITE THRESHOLD <output id="thresholdVal">125</output></label><input type="range" id="threshold" min="0" max="255" value="125"></div>
+<div class="setting"><label for="contrast">CONTRAST <output id="contrastVal">2.0×</output></label><input type="range" id="contrast" min="1" max="5" step="0.1" value="2"></div>
+<div class="setting"><label for="edgeStrength">EDGE SENSITIVITY <output id="edgeVal">70</output></label><input type="range" id="edgeStrength" min="10" max="220" value="70"></div>
+<div class="setting"><label for="thickness">OUTLINE THICKNESS <output id="thicknessVal">2 px</output></label><input type="range" id="thickness" min="1" max="4" value="2"></div>
+<div class="checks"><label><input id="invert" type="checkbox">INVERT BLACK / WHITE</label><label><input id="mirror" type="checkbox">MIRROR</label></div>
+<p class="note">Start with “Pure black &amp; white,” then try “Black &amp; white + outlines.” Adjust the threshold for different lighting. This is a prototype: edges are detected, but people are not segmented from the background. Do not use for walking, driving, or other safety-critical navigation. Video stays on your device; it is not uploaded.</p>
+</main><footer>Requires camera permission and a secure context (HTTPS or localhost).</footer>
+<script>
+'use strict';
+const $=s=>document.getElementById(s),video=$('source'),canvas=$('view'),ctx=canvas.getContext('2d',{alpha:false}),temp=document.createElement('canvas'),tctx=temp.getContext('2d',{willReadFrequently:true});
+const controls=['mode','threshold','contrast','edgeStrength','thickness','invert','mirror'];let stream=null,facing='environment',running=false,frozen=false,lastTime=0,frameCount=0,fpsTime=0;
+function status(message){$('notice').textContent=message;$('notice').hidden=!message}
+function outputs(){$('thresholdVal').value=$('threshold').value;$('contrastVal').value=Number($('contrast').value).toFixed(1)+'×';$('edgeVal').value=$('edgeStrength').value;$('thicknessVal').value=$('thickness').value+' px'}controls.forEach(id=>$(id).addEventListener('input',outputs));outputs();
+async function start(){try{status('Requesting camera permission…');if(stream)stream.getTracks().forEach(t=>t.stop());stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:facing},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30}}});video.srcObject=stream;await video.play();running=true;frozen=false;$('freeze').textContent='FREEZE';$('flip').disabled=false;$('freeze').disabled=false;$('start').textContent='RESTART CAMERA';status('');requestAnimationFrame(draw)}catch(e){status('Camera unavailable: '+(e.message||e)+'. On your phone, open this page via HTTPS, not a file or local network HTTP address.')}}
+$('start').onclick=start;$('flip').onclick=()=>{facing=facing==='environment'?'user':'environment';$('mirror').checked=facing==='user';start()};$('freeze').onclick=()=>{frozen=!frozen;$('freeze').textContent=frozen?'RESUME':'FREEZE';if(!frozen)requestAnimationFrame(draw)};$('fullscreen').onclick=async()=>{try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen();else await document.exitFullscreen()}catch(e){status('Full screen is not supported by this browser.')}};
+function draw(now){if(!running||frozen)return;if(video.readyState<2){requestAnimationFrame(draw);return}if(now-lastTime<30){requestAnimationFrame(draw);return}lastTime=now;
+const vw=video.videoWidth,vh=video.videoHeight;if(!vw||!vh){requestAnimationFrame(draw);return}const w=Math.min(640,vw),h=Math.round(w*vh/vw);if(canvas.width!==w||canvas.height!==h){canvas.width=temp.width=w;canvas.height=temp.height=h}
+tctx.save();tctx.clearRect(0,0,w,h);if($('mirror').checked){tctx.translate(w,0);tctx.scale(-1,1)}tctx.drawImage(video,0,0,w,h);tctx.restore();
+const im=tctx.getImageData(0,0,w,h),d=im.data,n=w*h,g=new Uint8Array(n),out=new Uint8ClampedArray(n*4),thr=+$('threshold').value,c=+$('contrast').value,edgeLimit=+$('edgeStrength').value,thick=+$('thickness').value,mode=$('mode').value,invert=$('invert').checked;
+for(let p=0;p<n;p++){const i=p*4;let v=Math.round(.2126*d[i]+.7152*d[i+1]+.0722*d[i+2]);g[p]=Math.max(0,Math.min(255,Math.round((v-128)*c+128)))}
+const edges=new Uint8Array(n);if(mode==='edge'||mode==='outline'){
+// Simple local gradient operator; detects both dark-on-light and light-on-dark boundaries.
+for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const p=y*w+x;const gx=-g[p-w-1]-2*g[p-1]-g[p+w-1]+g[p-w+1]+2*g[p+1]+g[p+w+1];const gy=-g[p-w-1]-2*g[p-w]-g[p-w+1]+g[p+w-1]+2*g[p+w]+g[p+w+1];if(Math.abs(gx)+Math.abs(gy)>edgeLimit*7)edges[p]=1}
+if(thick>1){const original=edges.slice(),rad=thick-1;for(let y=rad;y<h-rad;y++)for(let x=rad;x<w-rad;x++){const p=y*w+x;if(!original[p])continue;for(let yy=-rad;yy<=rad;yy++)for(let xx=-rad;xx<=rad;xx++)if(xx*xx+yy*yy<=rad*rad+1)edges[p+yy*w+xx]=1}}
+}
+for(let p=0;p<n;p++){let v;if(mode==='gray')v=g[p];else if(mode==='outline')v=edges[p]?0:255;else {v=g[p]>=thr?255:0;if(mode==='edge'&&edges[p])v=v===255?0:255}if(invert)v=255-v;const i=p*4;out[i]=out[i+1]=out[i+2]=v;out[i+3]=255}
+ctx.putImageData(new ImageData(out,w,h),0,0);frameCount++;if(now-fpsTime>1000){$('fps').textContent=Math.round(frameCount*1000/(now-fpsTime||1000))+' fps';fpsTime=now;frameCount=0}requestAnimationFrame(draw)}
+if(!navigator.mediaDevices?.getUserMedia){status('This browser cannot access the camera from this page. Use Chrome on HTTPS or localhost.')}else if(!window.isSecureContext){status('Camera access requires HTTPS or localhost. A local file on a phone may not work.')}window.addEventListener('pagehide',()=>{if(stream)stream.getTracks().forEach(t=>t.stop())});
+</script></body></html>
